@@ -44,12 +44,20 @@ def transform_epsg(source_epsg, target_epsg, geometry):
     geometry["coordinates"] = coordinates
 
     # if the source and target epsg dont match, consider transforming them
-    if target_epsg != source_epsg:        
-        geometry = transform_geom(
-            from_epsg(source_epsg),
-            from_epsg(target_epsg),
-            geometry,
-        )
+    if target_epsg != source_epsg: 
+        try:       
+            geometry = transform_geom(
+                from_epsg(source_epsg),
+                from_epsg(target_epsg),
+                geometry,
+            )
+
+        except ValueError as e:
+            if str(e) == "Null geom":
+                return geometry
+            else:
+                raise ValueError
+
 
         # conversion can change round brackets to square brackets
         # this converts to round brackets to keep CSVs consistent

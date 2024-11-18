@@ -2,14 +2,37 @@
 '''
 
 import os
+import re
 import sys
 import csv
 import json
+import codecs
 from fiona.crs import from_epsg
 from fiona.transform import transform_geom
 from zipfile import ZipFile
+import xml.etree.cElementTree as ET
+from fiona import Geometry
+from typing import Dict
 
 import ckan.plugins.toolkit as tk
+
+def _geometry_to_json(geom: Geometry) -> str:
+    """_geometry_to_json
+
+    :param geom: the fiona geometry
+    :type geom: Geometry
+    :return: geojson compliant JSON string
+    :rtype: str
+    """
+    geom_dict = dict(geom)
+
+    # GeoJSON spec does not indicate a case for `null` to be valid json (only mentions
+    # it to be a list of geometries or DNE in the json at all.)
+    # So if it is explicitly None, remove it before jsonifying
+    if 'geometries' in geom_dict and geom_dict.get("geometries") is None:
+        del geom_dict["geometries"]
+
+    return json.dumps(geom_dict)
 
 def transform_epsg(source_epsg, target_epsg, geometry):
     '''standardize processing when transforming epsg'''
@@ -96,7 +119,7 @@ def dump_to_geospatial_generator(
     '''reads a CKAN CSV dump, creates generator with converted CRS'''
 
     # For each row in the dump ...
-    with open(dump_filepath, "r") as f:
+    with codecs.open(dump_filepath, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f, fieldnames=fieldnames)
         next(reader)
         for row in reader:
@@ -130,7 +153,7 @@ def transform_dump_epsg(dump_filepath, fieldnames, source_epsg, target_epsg):
     '''generator yields dump rows with epsg reformatted/converted'''
 
     # Open the dump CSV into a dictreader
-    with open(dump_filepath, "r") as f:
+    with codecs.open(dump_filepath, "r", encoding="utf-8") as f:
         dictreader = csv.DictReader(f, fieldnames=fieldnames)
         # skip header
         next(dictreader)
@@ -138,24 +161,25 @@ def transform_dump_epsg(dump_filepath, fieldnames, source_epsg, target_epsg):
         # For each fow, convert the CRS
         for row in dictreader: 
 
-            row["geometry"] = transform_epsg(
+            geometry = transform_epsg(
                 source_epsg, 
                 target_epsg, 
                 row["geometry"]
             )
-
+            row["geometry"] = _geometry_to_json(geometry)
             yield (row)                        
 
         f.close()
 
 
-def create_filepath(dir_path, resource_name, epsg, format):
+
+def create_filepath(dir_path, resource_name, epsg, file_format):
     '''Creates a filepath using input resource name, and desired format/epsg'''
 
     epsg_suffix = " - " + str(epsg) if epsg else ""
     return os.path.join(
         dir_path,
-        "{0}{1}.{2}".format(resource_name, epsg_suffix, format.lower())
+        "{0}{1}.{2}".format(resource_name, epsg_suffix, file_format.lower())
     )
 
 
@@ -171,10 +195,9 @@ def append_to_output(output, target_format, target_epsg, output_filepath):
 
 def write_to_csv(dump_filepath, fieldnames, rows_generator):
     '''Streams a dump into a CSV file'''
-
     csv.field_size_limit(sys.maxsize)
     
-    with open(dump_filepath, "w") as f:
+    with codecs.open(dump_filepath, "w", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames)
         writer.writeheader()
         writer.writerows(rows_generator)
@@ -187,7 +210,7 @@ def write_to_zipped_shapefile(fieldnames, dir_path,
 
     # put a mapping of full names to truncated names into a csv
     fields_filepath = dir_path + "/" + resource_metadata["name"]+" fields.csv"
-    with open(fields_filepath, "w") as fields_file:
+    with codecs.open(fields_filepath, "w", encoding="utf-8") as fields_file:
         writer = csv.DictWriter(fields_file, fieldnames=["field", "name"])
         writer.writeheader()
         for fieldname in [
@@ -213,7 +236,7 @@ def write_to_zipped_shapefile(fieldnames, dir_path,
 
 def write_to_json(dump_filepath, output_filepath, datastore_resource, context):
     '''Stream into a JSON file by running datastore_search over and over'''
-    with open(output_filepath, "w") as jsonfile:
+    with codecs.open(output_filepath, "w", encoding="utf-8") as jsonfile:
         # write starting bracket
         jsonfile.write("[")
 
@@ -241,12 +264,12 @@ def write_to_json(dump_filepath, output_filepath, datastore_resource, context):
                     }
                 )
 
-    with open(output_filepath, "rb+") as jsonfile:
+    with codecs.open(output_filepath, "rb+", encoding="utf-8") as jsonfile:
         # remove last ", "
         jsonfile.seek(-2, 2)
         jsonfile.truncate()
 
-    with open(output_filepath, "a") as jsonfile:
+    with codecs.open(output_filepath, "a", encoding="utf-8") as jsonfile:
         # add last closing ]
         jsonfile.write("]")
 
@@ -254,21 +277,18 @@ def write_to_json(dump_filepath, output_filepath, datastore_resource, context):
 def write_to_xml(dump_filepath, output_filepath):
     '''Stream into an XML file'''
 
-    with open(dump_filepath, "r") as csvfile:
+    with codecs.open(dump_filepath, "r", encoding="utf-8") as csvfile:
         dictreader = csv.DictReader(csvfile)
-        with open(output_filepath, "a") as xmlfile:
-            xmlfile.write('<?xml version="1.0" encoding="utf-8"?>')
-            xmlfile.write("<DATA>")
-            i = 0
-            for row in dictreader:
-                xml_row = '<ROW count="{}">'.format(str(i))
-                for key, value in row.items():
-                    xml_row += "<{key}>{value}</{key}>".format(
-                        key=key, value=value)
-                xmlfile.write(xml_row)
-                xmlfile.write("</ROW>")
-                i += 1
-            xmlfile.write("</DATA>")
+        root = ET.Element("DATA")
+        i = 0
+        for csvrow in dictreader:
+            xmlrow = ET.SubElement(root, "ROW", count = str(i))
+            i+=1
+            for key, value in csvrow.items():
+                keyname = re.sub(r"[^a-zA-Z0-9-_]","",key)
+                ET.SubElement(xmlrow, keyname).text = value
+        tree = ET.ElementTree(root)
+        tree.write(output_filepath, encoding='utf-8', xml_declaration=True)            
 
 
 def iotrans_auth_function(context, data_dict=None):

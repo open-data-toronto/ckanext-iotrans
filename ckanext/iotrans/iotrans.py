@@ -3,16 +3,16 @@ These function are the top level logic for this extension's CKAN actions
 """
 import ckan.plugins.toolkit as tk
 from ckan.common import config
+from pathlib import Path
 
 import tempfile
-import shutil
 import os
 import json
 import fiona
 import logging
 from fiona.crs import from_epsg
 from . import utils
-
+import shutil
 
 @tk.side_effect_free
 def to_file(context, data_dict):
@@ -32,6 +32,7 @@ def to_file(context, data_dict):
         writes desired files to folder in /tmp
         returns a list of filepaths, where the outputs are stored on disk
     '''
+    tk.check_access("to_file", context, data_dict)
 
     logging.info("[ckanext-iotrans] Starting iotrans.to_file")
 
@@ -376,35 +377,22 @@ def to_file(context, data_dict):
 @tk.side_effect_free
 def prune(context, data_dict):
 
-    # Taken from:
-    # https://github.com/open-data-toronto/iotrans/blob/master/iotrans/utils.py
-    # Deletes input file or a directory as long as its in correct dir
+    tk.check_access("prune", context, data_dict)
 
-    if not data_dict.get("path", None):
+    path = data_dict.get("path")
+
+    if path is None:
         raise tk.ValidationError(
             {"constraints": ["Input 'path' of dir/file to delete required!"]}
         )
+    path = Path(path).resolve()
 
-    path = data_dict["path"]
+    storage_path = Path(config.get("ckan.storage_path")).resolve()
 
-    storage_path = config.get("ckan.storage_path")
-    if not data_dict.get("path", None).startswith(storage_path):
-        raise tk.ValidationError(
-            {
-                "constraints": [
-                    "This action is meant for deleting folders in {}".format(
-                        storage_path
-                    )
-                ]
-            }
-        )
-
-    if os.path.isdir(path):
-        # Empty the contents of the folder before removing the directory
-        for f in os.listdir(path):
-            os.remove(os.path.join(path, f))
-
-        os.rmdir(path)
+    if storage_path not in path.parents:
+        raise tk.ValidationError({"constraints": ["invalid path"]})
+    if path.is_dir():
+        shutil.rmtree(path)
     else:
         os.remove(path)
 

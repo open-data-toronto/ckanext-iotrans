@@ -294,8 +294,12 @@ def write_to_xml(dump_filepath, output_filepath):
 
 def iotrans_auth_function(context, data_dict=None):
     '''CKAN auth function - requires authorized uses for certain actions'''
-    if context.get("auth_user_obj", False):
+    is_authorized = context.get("auth_user_obj", False)
+
+    if is_authorized:
         return {'success': True}
-    elif not context.get("auth_user_obj", None):
-        return {'success': False,
-                'msg': 'This endpoint is for authorized accounts only'}
+    else:
+        return {
+            'success': False,
+            'msg': 'This endpoint is for authorized accounts only'
+        }

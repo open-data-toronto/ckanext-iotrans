@@ -14,7 +14,6 @@ from fiona.crs import from_epsg
 from . import utils
 import shutil
 
-@tk.side_effect_free
 def to_file(context, data_dict):
     '''
     inputs:
@@ -374,7 +373,6 @@ def to_file(context, data_dict):
     return output
 
 
-@tk.side_effect_free
 def prune(context, data_dict):
 
     tk.check_access("prune", context, data_dict)

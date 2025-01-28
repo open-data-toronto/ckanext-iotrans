@@ -18,6 +18,38 @@ class IotransPlugin(plugins.SingletonPlugin):
     """
 
     plugins.implements(plugins.IActions)
+    plugins.implements(plugins.IClick)
+
+    def get_commands(self):
+        import click
+
+        @click.command()
+        @click.argument("resourceid")
+        @click.argument("targetformat")
+        def tofile(resourceid, targetformat):
+
+            data = {
+                "resource_id": resourceid,
+                "source_epsg": 4326,
+                "target_epsgs": [2952],
+                "target_formats": targetformat.strip().split(","),
+            }
+
+            try:
+                result = iotrans.to_file({"ignore_auth": True}, data)
+                click.echo(click.style(str(result), fg="green"))
+            except Exception as e:
+                click.echo(
+                    click.style(
+                        "❌ An error occurred during the operation:",
+                        fg="red",
+                        bold=True,
+                    )
+                )
+                click.echo(click.style(str(e), fg="red"))
+                return
+
+        return [tofile]
 
     def get_actions(self):
         return {

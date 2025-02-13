@@ -1,9 +1,0 @@
-{
-"type": "FeatureCollection",
-"name": "test_fixture_resource - 2952",
-"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::2952" } },
-"features": [
-{ "type": "Feature", "properties": { "_id": 1, "the text": "some text with a line \r\t\n break" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 332700.75455791974673, 4788138.468137074261904 ] ] } },
-{ "type": "Feature", "properties": { "_id": 2, "the text": "this is a text with some line breaks. Here's one now!\nAnd another one!\"\n                                                                                            2 whole line breaks wow" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 268148.215933714411221, 4865947.565158360637724 ] ] } }
-]
-}

@@ -1,11 +1,11 @@
-from ckan.common import config
-import ckan.tests.helpers as helpers
-from ckan.logic import ValidationError
+import os
 from contextlib import contextmanager
 from shutil import rmtree
-import os
+
+import ckan.tests.helpers as helpers
 import pytest
-from ckan.logic import get_action, NotAuthorized
+from ckan.common import config
+from ckan.logic import NotAuthorized, ValidationError, get_action
 
 
 @contextmanager
@@ -72,10 +72,10 @@ def test_deletes_files(files, storage_path):
         assert all(not os.path.exists(path) for path in paths)
         assert not os.path.exists(tmp_dir)
 
+
 @pytest.mark.usefixtures("with_plugins")
 @pytest.mark.ckan_config("ckan.plugins", "datastore iotrans")
 class TestRejectsPathsOutsideStoragePath:
-
     def test_rejects_relative_parents(self, storage_path):
         """
         Ensure users can't delete arbitrary system files/directories by `..`ing out of
@@ -101,6 +101,7 @@ class TestRejectsPathsOutsideStoragePath:
                 # NOTE: important, we pass tmp_dir to prune instead of path so that if
                 # this test fails, we don't clobber the entire `tmp` dir
                 helpers.call_action("prune", path=tmp_dir)
+
 
 @pytest.mark.usefixtures("with_plugins")
 @pytest.mark.ckan_config("ckan.plugins", "datastore iotrans")

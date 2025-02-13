@@ -1,16 +1,16 @@
-import fiona
-import json
-import os
-from typing import Tuple, Callable
 import csv
 import filecmp
+import json
+import os
+from typing import Callable, Tuple
+
+import fiona
 from fiona import Collection, Geometry
 
 
 def _get_csv_comparator(
     compare_row: Callable, ignore_header=True
 ) -> Callable[[str, str], bool]:
-
     def _compare_fn(csv_path_1: str, csv_path_2: str) -> bool:
         with open(csv_path_1, "r") as csv_1_file:
             csv_1 = csv.reader(csv_1_file)
@@ -48,9 +48,7 @@ def _compare_json_small(json_path_1, json_path_2) -> Tuple[bool, str]:
     with open(json_path_2) as json_file_2:
         json_2 = json.load(json_file_2)
 
-    if json_1 != json_2:
-        return False
-    return True
+    return json_1 == json_2
 
 
 def fiona_collections_eq(
@@ -136,7 +134,6 @@ def geographic_files_eq(
 
 csv_rows_eq = ("csv", _get_csv_comparator(lambda a, b: a == b))
 json_small = ("json", _compare_json_small)
-geojson_small = ("geojson", _compare_json_small)
 xml_eq = ("xml", filecmp.cmp)
 
 CORRECT_DIR_PATH = os.path.join(

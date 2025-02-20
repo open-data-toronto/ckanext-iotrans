@@ -60,38 +60,3 @@ def iotrans_auth_function(context, data_dict=None):
             "success": False,
             "msg": "This endpoint is for authorized accounts only",
         }
-
-
-def transform_crs(geom: Dict, crs_transformer: Transformer) -> fiona.Geometry:
-    """_summary_
-    transform coordinates of an input geometry object
-    input geometry object and pyproj transformer object
-    output geometry with coordinates transformed by said transformer
-
-    :param geom: A geometry to transform. May be a Dictionary with "type" and
-        "coordinates" fields or a fiona.Geometry obj
-    :type geom: Dict
-    :param crs_transformer:
-    :type crs_transformer: Transformer
-    :raises NotImplemented: for unimplemented geometry types
-    :return: transformed geometry object in the provided crs
-    :rtype: fiona.Geometry
-    """
-    coords = geom["coordinates"]
-
-    if geom["type"] == "Point":
-        transformed_coords = crs_transformer.transform(*coords)
-    elif geom["type"] == "LineString":
-        transformed_coords = [crs_transformer.transform(*coord) for coord in coords]
-    elif geom["type"] in ["MultiLineString", "Polygon"]:
-        transformed_coords = []
-        for shape in coords:
-            transformed_coords += [
-                [crs_transformer.transform(*coord) for coord in shape]
-            ]
-    else:
-        raise NotImplemented(
-            f"transform_crs not implemented for geom of type {geom['type']}"
-        )
-
-    return fiona.Geometry(type=geom["type"], coordinates=transformed_coords)

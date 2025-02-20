@@ -8,7 +8,7 @@ import pytest
 from fiona import Geometry
 from pyproj.transformer import TransformerGroup
 
-from ckanext.iotrans.utils import generic, to_file
+from ckanext.iotrans.utils import generic, to_file, transform
 
 from .utils import TEST_TMP_PATH
 
@@ -70,7 +70,7 @@ class TestTransformCRS:
             coordinates=(325490.2070075939, 4852479.658328905),
         )
 
-        assert correct_point == generic.transform_crs(point, self.crs_transformer)
+        assert correct_point == transform.transform_geom(point, self.crs_transformer)
 
     def test_line_string(self):
         line = {
@@ -88,7 +88,7 @@ class TestTransformCRS:
             ],
         )
 
-        assert correct_line == generic.transform_crs(line, self.crs_transformer)
+        assert correct_line == transform.transform_geom(line, self.crs_transformer)
 
     def test_multi_line_string(self):
         multiline = {
@@ -168,7 +168,7 @@ class TestTransformCRS:
             ],
         )
 
-        assert correct_multiline == generic.transform_crs(
+        assert correct_multiline == transform.transform_geom(
             multiline, self.crs_transformer
         )
 
@@ -200,13 +200,56 @@ class TestTransformCRS:
             ],
         )
 
-        assert correct_polygon == generic.transform_crs(polygon, self.crs_transformer)
+        assert correct_polygon == transform.transform_geom(
+            polygon, self.crs_transformer
+        )
 
     def test_preserves_z_axis(self):
         geom = Geometry(
             type="MultiLineString",
             coordinates=[[[0, 0, 1], [0, 0, 2]], [[0, 0, 3], [0, 0, 4]]],
         )
-        transformed = generic.transform_crs(geom, self.crs_transformer)
+        transformed = transform.transform_geom(geom, self.crs_transformer)
         z_coords = [point[2] for string in transformed.coordinates for point in string]
         assert z_coords == [1, 2, 3, 4]
+
+    @pytest.mark.parametrize(
+        "geometry",
+        (
+            Geometry(type="Point", coordinates=[0.0, 0.0]),
+            Geometry(type="MultiPoint", coordinates=[[0.0, 0.0], [1.0, 1.0]]),
+            Geometry(type="LineString", coordinates=[[0.0, 0.0], [1.0, 1.0]]),
+            Geometry(
+                type="MultiLineString",
+                coordinates=[[[0.0, 0.0], [1.0, 1.0]], [[2.0, 2.0], [3.0, 3.0]]],
+            ),
+            Geometry(
+                type="Polygon",
+                coordinates=[
+                    [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]
+                ],
+            ),
+            Geometry(
+                type="MultiPolygon",
+                coordinates=[
+                    [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]],
+                    [[[2.0, 2.0], [3.0, 2.0], [3.0, 3.0], [2.0, 3.0], [2.0, 2.0]]],
+                ],
+            ),
+            Geometry(
+                type="GeometryCollection",
+                geometries=[
+                    Geometry(type="Point", coordinates=[0.0, 0.0]),
+                    Geometry(type="LineString", coordinates=[[0.0, 0.0], [1.0, 1.0]]),
+                ],
+            ),
+        ),
+    )
+    def test_geometry_type_coverage(self, geometry):
+        class MockTransformer:
+            @staticmethod
+            def transform(*coords):
+                return list(coords)
+
+        transformed = transform.transform_geom(geometry, MockTransformer())
+        assert dict(transformed) == geometry

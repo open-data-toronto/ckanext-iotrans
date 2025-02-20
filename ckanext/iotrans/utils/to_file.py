@@ -82,8 +82,8 @@ from fiona.crs import CRS
 from pydantic import BaseModel
 from pyproj.transformer import TransformerGroup
 
-from .generic import transform_crs
 from .json_lines import jsonlines_reader
+from .transform import transform_geom
 
 #####################
 # Types             #
@@ -421,7 +421,7 @@ class SpatialHandler(ToFileHandler, ABC):
 
             if source_crs != target_crs:
                 # geoms = fiona.transform.transform_geom(source_crs, target_crs, geoms)
-                output_geoms = [transform_crs(geom, crs_transformer) for geom in geoms]
+                output_geoms = [transform_geom(geom, crs_transformer) for geom in geoms]
                 geoms = output_geoms
 
             else:

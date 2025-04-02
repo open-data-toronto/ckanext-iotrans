@@ -253,3 +253,51 @@ class TestTransformCRS:
 
         transformed = transform.transform_geom(geometry, MockTransformer())
         assert dict(transformed) == geometry
+
+
+_is_even = lambda x: x % 2 == 0
+_mod_3 = lambda x: x % 3
+
+
+@pytest.mark.parametrize(
+    "items,key_func,expected",
+    [
+        # all 1 group
+        ([0, 0], _is_even, [{"key": True, "items": [0, 0]}]),
+        # 2 groups
+        (
+            [0, 1],
+            _is_even,
+            [{"key": True, "items": [0]}, {"key": False, "items": [1]}],
+        ),
+        # preserving order when changes back and forth between 2 groups
+        (
+            [0, 1, 2, 4, 5],
+            _is_even,
+            [
+                {"key": True, "items": [0]},
+                {"key": False, "items": [1]},
+                {"key": True, "items": [2, 4]},
+                {"key": False, "items": [5]},
+            ],
+        ),
+        # empty case
+        ([], _is_even, []),
+        # 3 groups
+        (
+            [0, 1, 2, 3, 3, 3, 4, 5],
+            _mod_3,
+            [
+                {"key": 0, "items": [0]},
+                {"key": 1, "items": [1]},
+                {"key": 2, "items": [2]},
+                {"key": 0, "items": [3, 3, 3]},
+                {"key": 1, "items": [4]},
+                {"key": 2, "items": [5]},
+            ],
+        ),
+    ],
+)
+def test_stable_group_by(items, key_func, expected):
+    result = generic.stable_group_by(items, key_func)
+    assert expected == result

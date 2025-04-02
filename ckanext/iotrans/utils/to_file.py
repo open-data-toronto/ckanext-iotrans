@@ -77,11 +77,11 @@ from typing import (
 from zipfile import ZipFile
 
 import fiona
-import fiona.transform
 from fiona.crs import CRS
 from pydantic import BaseModel
 from pyproj.transformer import TransformerGroup
 
+from .generic import stable_group_by
 from .json_lines import jsonlines_reader
 from .transform import transform_geom
 
@@ -149,6 +149,8 @@ def _geometry_to_json(geom: fiona.Geometry) -> str:
     :return: geojson compliant JSON string
     :rtype: str
     """
+    if geom is None:
+        return "null"
     geom_dict = dict(geom)
 
     # GeoJSON spec does not indicate a case for `null` to be valid json (only mentions
@@ -375,9 +377,10 @@ class SpatialHandler(ToFileHandler, ABC):
         output_path = self.save_to_file(logged_generator)
         return output_path
 
-    def _geom_to_multigeom(self, geom: fiona.Geometry) -> fiona.Geometry:
-        multi_geom_type = self._MULTI_GEOM_MAPPING[geom["type"]]
-        if geom["type"] == multi_geom_type:
+    @classmethod
+    def _geom_to_multigeom(cls, geom: fiona.Geometry) -> fiona.Geometry:
+        multi_geom_type = cls._MULTI_GEOM_MAPPING[geom.type]
+        if geom.type == multi_geom_type:
             # already a multi-type
             return geom
         return fiona.Geometry(
@@ -389,9 +392,17 @@ class SpatialHandler(ToFileHandler, ABC):
         )
 
     @staticmethod
-    def _json_to_geom_generator(rows_generator: Generator[Dict, None, None]):
+    def _json_to_geom(
+        rows_generator: Generator[Dict, None, None]
+    ) -> list[Optional[Dict]]:
+        result = []
         for row in rows_generator:
-            yield json.loads(row["geometry"])
+            geometry = row["geometry"]
+            if geometry == "None" or geometry == "null":
+                result.append(None)
+            else:
+                result.append(json.loads(geometry))
+        return result
 
     def transform_geom(
         self, row_generator: Generator[Dict, None, None]
@@ -417,18 +428,36 @@ class SpatialHandler(ToFileHandler, ABC):
         # - https://github.com/Toblerity/Fiona/pull/1477
         for batch in _batched(row_generator, 5000):
 
-            geoms = self._json_to_geom_generator(batch)
-
-            if source_crs != target_crs:
-                # geoms = fiona.transform.transform_geom(source_crs, target_crs, geoms)
-                output_geoms = [transform_geom(geom, crs_transformer) for geom in geoms]
-                geoms = output_geoms
-
-            else:
-                geoms = [fiona.Geometry.from_dict(geom) for geom in geoms]
+            # Partition the batch of geoms to separate `None`/`null` geometries from
+            # defined ones. Why?:
+            # - we can't pass null geoms to fiona -> fiona complains about missing
+            #   coordinates
+            # - so we need to have a conditional handling Nones differently
+            # - but we still want to pass larger batches to transform_geom if we can for
+            #   efficiency gains (ie. not pass these to transform_geom 1 by 1)
+            # - we also need to preserve the order of items
+            groups: list[list[Optional[dict]]] = stable_group_by(
+                self._json_to_geom(batch), key_func=lambda row: row is None
+            )
+            out_batch = []
+            for group in groups:
+                is_null_geom = group["key"]
+                items = group["items"]
+                should_transform_geoms = not is_null_geom and (source_crs != target_crs)
+                out_geoms = (
+                    [transform_geom(geom, crs_transformer) for geom in items]
+                    if should_transform_geoms
+                    else [fiona.Geometry.from_dict(geom) for geom in items]
+                )
+                out_batch.extend(out_geoms)
 
             for i, item in enumerate(batch):
-                item["geometry"] = self._geom_to_multigeom(geoms[i])
+                out_geom = out_batch[i]
+                item["geometry"] = (
+                    self._geom_to_multigeom(out_geom)
+                    if out_geom["coordinates"]
+                    else None
+                )
                 yield item
 
     def format_row(
@@ -571,7 +600,7 @@ class SpatialToSpatial(SpatialHandler, ABC):
             yield {
                 "type": "Feature",
                 "properties": properties,
-                "geometry": dict(geometry),
+                "geometry": geometry,
             }
 
     def save_to_file(self, row_generator: Generator[Dict, None, None]) -> str:

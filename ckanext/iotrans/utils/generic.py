@@ -2,7 +2,7 @@
 """
 
 import os
-from typing import Any, Dict
+from typing import Any, Callable, TypeVar, Union
 
 import ckan.plugins.toolkit as tk
 import fiona
@@ -60,3 +60,24 @@ def iotrans_auth_function(context, data_dict=None):
             "success": False,
             "msg": "This endpoint is for authorized accounts only",
         }
+
+
+GroupByT = TypeVar("PartiontionByT")
+DictKey = Union[str, int, tuple, bool]
+
+
+def stable_group_by(
+    items: list[GroupByT], key_func: Callable[[GroupByT], DictKey]
+) -> list[list[GroupByT]]:
+    result: list[dict[DictKey, GroupByT]] = []
+
+    for item in items:
+        last_group = result[-1] if len(result) else None
+
+        key = key_func(item)
+        if last_group is None or key != last_group["key"]:
+            group = {"key": key, "items": [item]}
+            result.append(group)
+        else:
+            last_group["items"].append(item)
+    return result
